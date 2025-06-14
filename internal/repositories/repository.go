@@ -107,7 +107,9 @@ func (r *taskRepository) CreateTask(task *tasks.Task) (*tasks.Task, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	due := task.Due.Format(time.RFC3339)
 
-	task.APIIDs = make(map[string]string)
+	if task.APIIDs == nil {
+		task.APIIDs = make(map[string]string)
+	}
 	apiIDsJSON, err := json.Marshal(task.APIIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal APIIDs: %w", err)

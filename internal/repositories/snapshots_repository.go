@@ -10,6 +10,8 @@ import (
 	"github.com/zeerodex/goot/internal/models"
 )
 
+var ErrSnapshotNotFound = errors.New("snapshot not found")
+
 type SnapshotsRepository interface {
 	CreateSnapshotForAPI(apiName string, tasks []string) error
 	GetLastSnapshot(apiName string) (*models.Snapshot, error)
@@ -84,7 +86,7 @@ func (r *snapshotsRepository) GetLastSnapshot(apiName string) (*models.Snapshot,
 	snapshot, err := r.scanSnapshot(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("no snapshots found")
+			return nil, ErrSnapshotNotFound
 		}
 		return nil, fmt.Errorf("failed to get last snapshot: %w", err)
 	}
@@ -175,7 +177,7 @@ func (r *snapshotsRepository) scanSnapshot(rows scanner) (*models.Snapshot, erro
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrTaskNotFound
+			return nil, ErrSnapshotNotFound
 		}
 		return nil, fmt.Errorf("failed to scan row: %w", err)
 	}

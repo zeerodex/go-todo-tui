@@ -93,7 +93,10 @@ func (w *Worker) processDeleteTaskOp(id int) error {
 		if err != nil {
 			return err
 		}
-
+	}
+	err := w.processCreateSnapshotsOp()
+	if err != nil {
+		return fmt.Errorf("failed to create snapshot: %w", err)
 	}
 	return nil
 }
@@ -109,6 +112,10 @@ func (w *Worker) processCreateTaskOp(task *tasks.Task) error {
 		if err != nil {
 			return err
 		}
+	}
+	err := w.processCreateSnapshotsOp()
+	if err != nil {
+		return fmt.Errorf("failed to create snapshot: %w", err)
 	}
 	return nil
 }
@@ -145,15 +152,17 @@ func (w *Worker) processSyncTasksOp() error {
 
 func (w *Worker) processCreateSnapshotsOp() error {
 	for apiName, api := range w.apis {
-		atasks, err := api.GetAllTasks()
+		apiTasks, err := api.GetAllTasks()
 		if err != nil {
 			return fmt.Errorf("failed to get all tasks from %s api: %w", apiName, err)
 		}
-		apiTasks := make(tasks.APITasks, len(atasks))
-		for i, atask := range atasks {
-			apiTasks[i] = tasks.APITaskFromTask(&atask, apiName)
+
+		ids := make([]string, len(apiTasks))
+		for i, apiTask := range apiTasks {
+			ids[i] = apiTask.APIIDs[apiName]
 		}
-		err = w.snapRepo.CreateSnapshotForAPI(apiName, apiTasks)
+
+		err = w.snapRepo.CreateSnapshotForAPI(apiName, ids)
 		if err != nil {
 			return fmt.Errorf("failed to create snapshot for %s api: %w", apiName, err)
 		}

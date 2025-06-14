@@ -10,4 +10,4 @@ type Snapshot struct {
 	IDs       []string
 }
 
-type Snapshots []Snapshot
+type Snapshots map[string]*Snapshot

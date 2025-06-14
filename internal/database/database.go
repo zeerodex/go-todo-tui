@@ -35,7 +35,7 @@ func InitDB() (*sql.DB, error) {
     id INTEGER PRIMARY KEY,
     api TEXT NOT NULL, 
     timestamp TEXT NOT NULL,
-    data TEXT NOT NULL)`
+    api_ids TEXT)`
 
 	_, err = db.Exec(snapshotsStmt)
 	if err != nil {
