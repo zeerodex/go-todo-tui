@@ -1,11 +1,9 @@
 package workers
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/zeerodex/goot/internal/models"
-	"github.com/zeerodex/goot/internal/repositories"
 	"github.com/zeerodex/goot/internal/tasks"
 )
 
@@ -29,9 +27,7 @@ func (w *Worker) Sync() error {
 		}
 		snapshots[apiName], err = w.snapRepo.GetLastSnapshot(apiName)
 		if err != nil {
-			if !errors.Is(err, repositories.ErrSnapshotNotFound) {
-				return fmt.Errorf("failed to get snapshot for %s api: %w", apiName, err)
-			}
+			return fmt.Errorf("failed to get snapshot for %s api: %w", apiName, err)
 		}
 	}
 
@@ -53,7 +49,6 @@ func (w *Worker) Sync() error {
 		for sourceAPI, deletedIds := range deleted {
 			for _, deletedId := range deletedIds {
 				task, found := ltasks.FindTaskByAPIID(deletedId, sourceAPI)
-				// HACK: corresponding api ids
 				if found {
 					for targetAPI, api := range w.apis {
 						if targetAPI != sourceAPI {
