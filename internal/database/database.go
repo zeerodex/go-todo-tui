@@ -42,5 +42,23 @@ func InitDB() (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to create snapshots table: %w", err)
 	}
 
+	indexes := []string{
+		`CREATE INDEX IF NOT EXISTS idx_tasks_completed ON tasks(completed)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_deleted ON tasks(deleted)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_notified ON tasks(notified)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_last_modified ON tasks(last_modified)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_active ON tasks(deleted, completed)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_api_ids ON tasks(api_ids)`,
+		`CREATE INDEX IF NOT EXISTS idx_snapshots_api ON snapshots(api)`,
+	}
+
+	for _, indexStmt := range indexes {
+		_, err = db.Exec(indexStmt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create index: %w", err)
+		}
+	}
+
 	return db, nil
 }
