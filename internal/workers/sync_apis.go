@@ -35,15 +35,62 @@ func (w *Worker) Sync() error {
 		}
 	}
 
-	if apisTasksEqual(apisTasks) {
-		apiTasks := mergeAPIsTasks(apisTasks)
-		if slicesEqual(ltasks, apiTasks) {
-			return nil
-		} else {
-			err = w.syncLTasks(ltasks, apiTasks)
-			if err != nil {
-				return fmt.Errorf("failed to replace local tasks with api tasks: %w", err)
+	if !apisTasksEqual(apisTasks) {
+		deleted, added := getDiff(apisTasks, snapshots)
+		for sourceAPI, addedIds := range added {
+			for _, addedId := range addedIds {
+				task, _ := apisTasks[sourceAPI].FindTaskByAPIID(addedId, sourceAPI)
+				for targetAPI, api := range w.apis {
+					if targetAPI != sourceAPI {
+						_, err := api.CreateTask(task)
+						if err != nil {
+							return fmt.Errorf("failed to create task in %s api: %w", targetAPI, err)
+						}
+					}
+				}
 			}
+		}
+		for sourceAPI, deletedIds := range deleted {
+			for _, deletedId := range deletedIds {
+				task, found := ltasks.FindTaskByAPIID(deletedId, sourceAPI)
+				// HACK: corresponding api ids
+				if found {
+					for targetAPI, api := range w.apis {
+						if targetAPI != sourceAPI {
+							err = api.DeleteTaskByID(task.APIIDs[targetAPI])
+							if err != nil {
+								return fmt.Errorf("failed to delete task from %s api: %w", targetAPI, err)
+							}
+						}
+					}
+				}
+				err = w.repo.DeleteTaskByID(task.ID)
+				if err != nil {
+					return fmt.Errorf("failed to delete local task deleted in api: %w", err)
+				}
+			}
+		}
+	}
+
+	err = w.processCreateSnapshotsOp()
+	if err != nil {
+		return fmt.Errorf("failed to create snapshots: %w", err)
+	}
+
+	for apiName, api := range w.apis {
+		apisTasks[apiName], err = api.GetAllTasks()
+		if err != nil {
+			return fmt.Errorf("failed to get all tasks from %s api: %w", apiName, err)
+		}
+	}
+
+	apiTasks := mergeAPIsTasks(apisTasks)
+	if slicesEqual(ltasks, apiTasks) {
+		return nil
+	} else {
+		err = w.syncLTasks(ltasks, apiTasks)
+		if err != nil {
+			return fmt.Errorf("failed to replace local tasks with api tasks: %w", err)
 		}
 	}
 
@@ -94,6 +141,46 @@ func (w *Worker) syncLTasks(ltasks tasks.Tasks, apiTasks tasks.Tasks) error {
 	return nil
 }
 
+func getDiff(apisTasks map[string]tasks.Tasks, snapshots models.Snapshots) (map[string][]string, map[string][]string) {
+	apiTasksIds := make(map[string][]string, len(apisTasks))
+	for apiName, tasks := range apisTasks {
+		tasksIdsList := make([]string, len(tasks))
+		for i, t := range tasks {
+			tasksIdsList[i] = t.APIIDs[apiName]
+		}
+		apiTasksIds[apiName] = tasksIdsList
+	}
+
+	deleted := make(map[string][]string)
+	added := make(map[string][]string)
+
+	for apiName, snapshot := range snapshots {
+
+		snapIds := make(map[string]bool)
+		for _, id := range snapshot.IDs {
+			snapIds[id] = true
+		}
+		apiIds := make(map[string]bool)
+		for _, id := range apiTasksIds[apiName] {
+			apiIds[id] = true
+		}
+
+		for snapId := range snapIds {
+			if !apiIds[snapId] {
+				deleted[apiName] = append(deleted[apiName], snapId)
+			}
+		}
+		for apiId := range apiIds {
+			if !snapIds[apiId] {
+				added[apiName] = append(added[apiName], apiId)
+			}
+		}
+
+	}
+
+	return deleted, added
+}
+
 func apisTasksEqual(apisTasks map[string]tasks.Tasks) bool {
 	if len(apisTasks) == 0 {
 		return true
@@ -130,15 +217,19 @@ func slicesEqual(slice1, slice2 tasks.Tasks) bool {
 func mergeAPIsTasks(apisTasks map[string]tasks.Tasks) tasks.Tasks {
 	var templateTasks tasks.Tasks
 	for _, slice := range apisTasks {
-		templateTasks = slice
-		break
+		if len(slice) != 0 {
+			templateTasks = slice
+			break
+		}
 	}
 
 	mergedTasks := make(tasks.Tasks, len(templateTasks))
 
 	for i, task := range templateTasks {
 		for apiName, apiTasks := range apisTasks {
-			task.APIIDs[apiName] = apiTasks[i].APIIDs[apiName]
+			if len(apiTasks) != 0 {
+				task.APIIDs[apiName] = apiTasks[i].APIIDs[apiName]
+			}
 		}
 		mergedTasks[i] = task
 	}

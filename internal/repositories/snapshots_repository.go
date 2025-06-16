@@ -80,7 +80,7 @@ func (r *snapshotsRepository) CreateSnapshotForAPI(apiName string, ids []string)
 // }
 
 func (r *snapshotsRepository) GetLastSnapshot(apiName string) (*models.Snapshot, error) {
-	query := `SELECT api, timestamp, api_ids FROM snapshots WHERE api = ? ORDER BY timestamp`
+	query := `SELECT api, timestamp, api_ids FROM snapshots WHERE api = ? ORDER BY timestamp DESC LIMIT 1`
 
 	row := r.db.QueryRow(query, apiName)
 	snapshot, err := r.scanSnapshot(row)

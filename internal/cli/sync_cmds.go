@@ -18,6 +18,11 @@ func NewSyncCmd(s services.TaskService, apis map[string]bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			res := <-s.WP().Results()
+			if res.Err != nil {
+				cmd.Println(res.Err.Error())
+			}
+
 			cmd.Println("Successfully synced APIs:")
 			for api, enabled := range apis {
 				if enabled {
