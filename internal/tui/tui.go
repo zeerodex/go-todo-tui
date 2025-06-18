@@ -211,9 +211,12 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case apiJobResultMsg:
 		if msg.res.Err != nil && m.currentState != ListView {
 			cmds = append(cmds, func() tea.Msg { return errMsg{msg.res.Err} })
+		} else if msg.res.Operation == workers.SyncTasksOp {
+			cmds = append(cmds, fetchTasksCmd(m.s), m.listModel.APIJobResultCmd(msg.res))
 		} else {
 			cmds = append(cmds, m.listModel.APIJobResultCmd(msg.res))
 		}
+
 	}
 
 	switch m.currentState {
