@@ -102,7 +102,7 @@ func (m *ListModel) SetTasksCmd(tasks tasks.Tasks) tea.Cmd {
 	return func() tea.Msg { return setTasksMsg{items} }
 }
 
-func (m *ListModel) HandleAPIJobResult(res *workers.APIJobResult) tea.Cmd {
+func (m *ListModel) APIJobResultCmd(res *workers.APIJobResult) tea.Cmd {
 	return func() tea.Msg {
 		return apiJobResultMsg{res}
 	}
@@ -181,6 +181,7 @@ func (m ListModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.res.Operation == workers.SyncTasksOp {
 			return m, m.list.NewStatusMessage(statusMessageStyle.Render("Tasks synced successfully!"))
 		}
+		return m, nil
 
 	case setTasksMsg:
 		return m, m.list.SetItems(msg.items)

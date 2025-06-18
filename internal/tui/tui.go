@@ -212,7 +212,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.res.Err != nil && m.currentState != ListView {
 			cmds = append(cmds, func() tea.Msg { return errMsg{msg.res.Err} })
 		} else {
-			cmds = append(cmds, m.listModel.HandleAPIJobResult(msg.res))
+			cmds = append(cmds, m.listModel.APIJobResultCmd(msg.res))
 		}
 	}
 

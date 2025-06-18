@@ -104,39 +104,34 @@ func (w *Worker) processAPIJob(job APIJob) error {
 	}
 }
 
-func (w *Worker) processDeleteTaskOp(taskID int) error {
-	for apiName, api := range w.apis {
-		if err := w.deleteTaskFromAPI(taskID, apiName, api); err != nil {
-			return fmt.Errorf("failed to delete task from %s: %w", apiName, err)
-		}
-	}
-
-	if err := w.processCreateSnapshotsOp(); err != nil {
-		return fmt.Errorf("failed to create snapshot after deletion: %w", err)
-	}
-
-	return nil
-}
-
-func (w *Worker) deleteTaskFromAPI(taskID int, apiName string, api apis.API) error {
-	apiID, err := w.repo.GetTaskAPIID(taskID, apiName)
-	if err != nil {
-		return fmt.Errorf("failed to get API ID: %w", err)
-	}
-
-	return api.DeleteTaskByID(apiID)
-}
-
 func (w *Worker) processCreateTaskOp(task *tasks.Task) error {
-	// Create in all APIs and collect their IDs
+	errChan := make(chan error, len(w.apis))
+	var wg sync.WaitGroup
+
+	wg.Add(len(w.apis))
+
 	for apiName, api := range w.apis {
-		if err := w.createTaskInAPI(task, apiName, api); err != nil {
-			return fmt.Errorf("failed to create task in %s: %w", apiName, err)
-		}
+		go func(apiName string, api apis.API) {
+			defer wg.Done()
+			if err := w.createTaskInAPI(task, apiName, api); err != nil {
+				errChan <- fmt.Errorf("failed to create task in %s: %w", apiName, err)
+				return
+			}
+			errChan <- nil
+		}(apiName, api)
 	}
+
+	wg.Wait()
+	close(errChan)
 
 	if err := w.processCreateSnapshotsOp(); err != nil {
 		return fmt.Errorf("failed to create snapshot after creation: %w", err)
+	}
+
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -157,21 +152,56 @@ func (w *Worker) createTaskInAPI(task *tasks.Task, apiName string, api apis.API)
 }
 
 func (w *Worker) processUpdateTaskOp(task *tasks.Task) error {
-	var lastErr error
+	errChan := make(chan error, len(w.apis))
+	var wg sync.WaitGroup
+
+	wg.Add(len(w.apis))
 
 	for apiName, api := range w.apis {
-		if _, err := api.UpdateTask(task); err != nil {
-			lastErr = fmt.Errorf("failed to update task in %s: %w", apiName, err)
+		go func(apiName string, api apis.API) {
+			defer wg.Done()
+			if _, err := api.UpdateTask(task); err != nil {
+				errChan <- fmt.Errorf("failed to update task in %s: %w", apiName, err)
+				return
+			}
+			errChan <- nil
+		}(apiName, api)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		if err != nil {
+			return err
 		}
 	}
 
-	return lastErr
+	return nil
 }
 
 func (w *Worker) processSetTaskCompletedOp(taskID int, completed bool) error {
+	errChan := make(chan error, len(w.apis))
+	var wg sync.WaitGroup
+
+	wg.Add(len(w.apis))
 	for apiName, api := range w.apis {
-		if err := w.setTaskCompletedInAPI(taskID, completed, apiName, api); err != nil {
-			return fmt.Errorf("failed to set completion in %s: %w", apiName, err)
+		go func(apiName string, api apis.API) {
+			defer wg.Done()
+			if err := w.setTaskCompletedInAPI(taskID, completed, apiName, api); err != nil {
+				errChan <- fmt.Errorf("failed to set completion in %s: %w", apiName, err)
+				return
+			}
+			errChan <- nil
+		}(apiName, api)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		if err != nil {
+			return err
 		}
 	}
 
@@ -187,14 +217,74 @@ func (w *Worker) setTaskCompletedInAPI(taskID int, completed bool, apiName strin
 	return api.SetTaskCompleted(apiID, completed)
 }
 
+func (w *Worker) processDeleteTaskOp(taskID int) error {
+	errChan := make(chan error, len(w.apis))
+	var wg sync.WaitGroup
+
+	wg.Add(len(w.apis))
+
+	for apiName, api := range w.apis {
+		go func(apiName string, api apis.API) {
+			defer wg.Done()
+			if err := w.deleteTaskFromAPI(taskID, apiName, api); err != nil {
+				errChan <- fmt.Errorf("failed to delete task from %s: %w", apiName, err)
+				return
+			}
+			errChan <- nil
+		}(apiName, api)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	if err := w.processCreateSnapshotsOp(); err != nil {
+		return fmt.Errorf("failed to create snapshot after deletion: %w", err)
+	}
+
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (w *Worker) deleteTaskFromAPI(taskID int, apiName string, api apis.API) error {
+	apiID, err := w.repo.GetTaskAPIID(taskID, apiName)
+	if err != nil {
+		return fmt.Errorf("failed to get API ID: %w", err)
+	}
+
+	return api.DeleteTaskByID(apiID)
+}
+
 func (w *Worker) processSyncTasksOp() error {
 	return w.Sync()
 }
 
 func (w *Worker) processCreateSnapshotsOp() error {
+	errChan := make(chan error, len(w.apis))
+	var wg sync.WaitGroup
+
+	wg.Add(len(w.apis))
 	for apiName, api := range w.apis {
-		if err := w.createSnapshotForAPI(apiName, api); err != nil {
-			return fmt.Errorf("failed to create snapshot for %s: %w", apiName, err)
+		go func(apiName string, api apis.API) {
+			defer wg.Done()
+			if err := w.createSnapshotForAPI(apiName, api); err != nil {
+				errChan <- fmt.Errorf("failed to create snapshot for %s: %w", apiName, err)
+				return
+			}
+			errChan <- nil
+		}(apiName, api)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		if err != nil {
+			return err
 		}
 	}
 
