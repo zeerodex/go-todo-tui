@@ -2,6 +2,7 @@ package components
 
 import (
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
@@ -9,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/zeerodex/goot/internal/tasks"
+	"github.com/zeerodex/goot/internal/workers"
 )
 
 var (
@@ -28,8 +30,9 @@ var (
 				Foreground(lipgloss.Color(mainColor))
 
 	statusMessageStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.AdaptiveColor{Light: "14", Dark: mainColor}).
-				Render
+				Foreground(lipgloss.AdaptiveColor{Light: "14", Dark: mainColor})
+	statusMessageErrStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("9"))
 )
 
 type ListErrorMsg struct {
@@ -83,19 +86,34 @@ func newListKeyMap() *listKeyMap {
 }
 
 type ListModel struct {
-	list list.Model
-	keys *listKeyMap
+	list      list.Model
+	keys      *listKeyMap
+	IsLoading bool
 
 	Method   string
 	Selected item
 }
 
-func (m *ListModel) SetTasks(tasks tasks.Tasks) tea.Cmd {
+func (m *ListModel) SetTasksCmd(tasks tasks.Tasks) tea.Cmd {
 	items := make([]list.Item, len(tasks))
 	for i, task := range tasks {
 		items[i] = item{id: task.ID, title: task.FullTitle(), desc: task.Description, completed: task.Completed}
 	}
-	return m.list.SetItems(items)
+	return func() tea.Msg { return setTasksMsg{items} }
+}
+
+func (m *ListModel) HandleAPIJobResult(res *workers.APIJobResult) tea.Cmd {
+	return func() tea.Msg {
+		return apiJobResultMsg{res}
+	}
+}
+
+type setTasksMsg struct {
+	items []list.Item
+}
+
+type apiJobResultMsg struct {
+	res *workers.APIJobResult
 }
 
 func (m ListModel) Init() tea.Cmd {
@@ -104,6 +122,12 @@ func (m ListModel) Init() tea.Cmd {
 
 func (m ListModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
+
+	if m.IsLoading {
+		cmds = append(cmds, m.list.StartSpinner())
+	} else {
+		m.list.StopSpinner()
+	}
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -116,8 +140,9 @@ func (m ListModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.list.SelectedItem() != nil {
 					m.Method = "delete"
 					selected := m.list.SelectedItem().(item)
-					statusCmd := m.list.NewStatusMessage(statusMessageStyle("Deleted " + selected.TitleOnly()))
+					statusCmd := m.list.NewStatusMessage(statusMessageStyle.Render("Deleted " + selected.TitleOnly()))
 					m.Selected = selected
+					m.IsLoading = true
 					return m, statusCmd
 				}
 			case key.Matches(msg, m.keys.updateTask):
@@ -125,24 +150,40 @@ func (m ListModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.Method = "update"
 					selected := m.list.SelectedItem().(item)
 					m.Selected = selected
+					m.IsLoading = true
 					return m, nil
 				}
 			case key.Matches(msg, m.keys.createTask):
 				m.Method = "create"
+				m.IsLoading = true
 				return m, nil
 			case key.Matches(msg, m.keys.toogleComplete):
 				if m.list.SelectedItem() != nil {
 					m.Method = "toogle"
 					selected := m.list.SelectedItem().(item)
-					statusCmd := m.list.NewStatusMessage(statusMessageStyle("Toggle completed for " + selected.TitleOnly()))
+					statusCmd := m.list.NewStatusMessage(statusMessageStyle.Render("Toggle completed for " + selected.TitleOnly()))
 					m.Selected = selected
+					m.IsLoading = true
 					return m, statusCmd
 				}
 			case key.Matches(msg, m.keys.syncTasks):
 				m.Method = "sync"
+				m.IsLoading = true
 				return m, nil
 			}
 		}
+
+	case apiJobResultMsg:
+		m.IsLoading = false
+		if msg.res.Err != nil {
+			return m, m.list.NewStatusMessage(statusMessageErrStyle.Render("Error syncing tasks: " + msg.res.Err.Error()))
+		}
+		if msg.res.Operation == workers.SyncTasksOp {
+			return m, m.list.NewStatusMessage(statusMessageStyle.Render("Tasks synced successfully!"))
+		}
+
+	case setTasksMsg:
+		return m, m.list.SetItems(msg.items)
 	}
 
 	newListModel, cmd := m.list.Update(msg)
@@ -169,6 +210,8 @@ func InitialListModel() ListModel {
 	list := list.New(items, delegate, 75, 30)
 	list.Title = "Goot"
 	list.Styles.Title = titleStyle
+
+	list.StatusMessageLifetime = 4 * time.Second
 
 	list.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{

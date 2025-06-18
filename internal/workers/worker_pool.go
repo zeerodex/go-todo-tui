@@ -36,7 +36,6 @@ type APIJobResult struct {
 	JobID     int
 	Operation APIOperation
 	TaskID    int
-	Success   bool
 	Err       error
 }
 

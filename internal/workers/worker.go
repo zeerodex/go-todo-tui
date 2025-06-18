@@ -81,7 +81,6 @@ func (w *Worker) processAPIJobWithRetry(ctx context.Context, job APIJob) APIJobR
 		JobID:     job.ID,
 		Operation: job.Operation,
 		TaskID:    job.TaskID,
-		Success:   err == nil,
 		Err:       err,
 	}
 }

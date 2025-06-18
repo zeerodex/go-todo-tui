@@ -25,6 +25,8 @@ type MainModel struct {
 	listModel     components.ListModel
 	creationModel components.CreationModel
 
+	isLoading bool
+
 	tasks tasks.Tasks
 	s     services.TaskService
 	err   error
@@ -88,6 +90,10 @@ func setTaskCompletedCmd(s services.TaskService, id int, completed bool) tea.Cmd
 		}
 		return fetchTasksCmd(s)()
 	}
+}
+
+type apiJobResultMsg struct {
+	res *workers.APIJobResult
 }
 
 type syncTasksMsg struct{}
@@ -168,7 +174,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case fetchedTasksMsg:
 		m.tasks = msg.Tasks
-		cmds = append(cmds, m.listModel.SetTasks(m.tasks))
+		cmds = append(cmds, m.listModel.SetTasksCmd(m.tasks))
 
 	case updateTaskMsg:
 		task, err := m.s.GetTaskByID(msg.id)
@@ -202,6 +208,12 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.previuosState = m.currentState
 		m.currentState = ErrView
 
+	case apiJobResultMsg:
+		if msg.res.Err != nil && m.currentState != ListView {
+			cmds = append(cmds, func() tea.Msg { return errMsg{msg.res.Err} })
+		} else {
+			cmds = append(cmds, m.listModel.HandleAPIJobResult(msg.res))
+		}
 	}
 
 	switch m.currentState {
@@ -292,11 +304,7 @@ func InitialMainModel(s services.TaskService) MainModel {
 func (m *MainModel) listenForAPIWorkerResults() tea.Cmd {
 	return func() tea.Msg {
 		for res := range m.s.WP().Results() {
-			if !res.Success && res.Err != nil {
-				return errMsg{err: res.ParseErr()}
-			} else if res.Success && res.Operation == workers.SyncTasksOp {
-				return fetchTasksMsg{}
-			}
+			return apiJobResultMsg{&res}
 		}
 		return nil
 	}
