@@ -29,9 +29,6 @@ func (r *snapshotsRepository) CreateSnapshotForAPI(apiName string, ids []string)
 	if apiName == "" {
 		return errors.New("API name cannot be empty")
 	}
-	if len(ids) == 0 {
-		return errors.New("IDs cannot be empty")
-	}
 
 	jsonIds, err := json.Marshal(ids)
 	if err != nil {

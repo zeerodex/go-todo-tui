@@ -72,7 +72,7 @@ func (api *GTasksApi) GetTaskByID(id string) (*tasks.Task, error) {
 }
 
 func (api *GTasksApi) GetAllTasks() (tasks.Tasks, error) {
-	gtasks, err := api.srv.Tasks.List(api.ListId).ShowCompleted(true).Do()
+	gtasks, err := api.srv.Tasks.List(api.ListId).ShowCompleted(true).ShowHidden(true).Do()
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve all tasks from list '%s': %w", api.ListId, err)
 	}

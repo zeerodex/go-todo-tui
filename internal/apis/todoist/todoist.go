@@ -46,6 +46,144 @@ func NewTodoistAPI() (apis.API, error) {
 	}, nil
 }
 
+func (c TodoistAPI) CreateTask(task *tasks.Task) (*tasks.Task, error) {
+	resp, err := c.makeRequest("POST", "/tasks", newTaskCU(task))
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := apis.HandleResponseStatusCode(resp.StatusCode); err != nil {
+		return nil, err
+	}
+
+	tt := &Task{}
+	err = json.NewDecoder(resp.Body).Decode(tt)
+	if err != nil {
+		return nil, fmt.Errorf("error encoding json: %w", err)
+	}
+
+	if task.Completed {
+		err = c.SetTaskCompleted(task.APIIDs[tasks.Todoist], task.Completed)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set completed: %w", err)
+		}
+	}
+
+	return tt.Task(), nil
+}
+
+type paginatedResponse struct {
+	Tasks       []Task `json:"results,omitempty"`
+	Next_cursor string `json:"next_cursor,omitempty"`
+}
+
+func (c *TodoistAPI) GetAllTasks() (tasks.Tasks, error) {
+	resp, err := c.makeRequest("GET", "/tasks", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := apis.HandleResponseStatusCode(resp.StatusCode); err != nil {
+		return nil, err
+	}
+
+	var paginatedResp paginatedResponse
+	err = json.NewDecoder(resp.Body).Decode(&paginatedResp)
+	if err != nil {
+		return nil, fmt.Errorf("error encoding json: %w", err)
+	}
+
+	// TODO: correct pagination
+	tasks := make(tasks.Tasks, len(paginatedResp.Tasks))
+	for i, t := range paginatedResp.Tasks {
+		tasks[i] = *t.Task()
+	}
+
+	return tasks, nil
+}
+
+func (c *TodoistAPI) GetTaskByID(id string) (*tasks.Task, error) {
+	resp, err := c.makeRequest("GET", fmt.Sprintf("/tasks/%s", id), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := apis.HandleResponseStatusCode(resp.StatusCode); err != nil {
+		return nil, err
+	}
+
+	var task Task
+	err = json.NewDecoder(resp.Body).Decode(&task)
+	if err != nil {
+		return nil, fmt.Errorf("error encoding json: %w", err)
+	}
+
+	return task.Task(), nil
+}
+
+func (c *TodoistAPI) UpdateTask(task *tasks.Task) (*tasks.Task, error) {
+	resp, err := c.makeRequest("POST", fmt.Sprintf("/tasks/%s", task.APIIDs[tasks.Todoist]), newTaskCU(task))
+	if err != nil {
+		return nil, fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := apis.HandleResponseStatusCode(resp.StatusCode); err != nil {
+		return nil, err
+	}
+
+	if task.Completed {
+		err = c.SetTaskCompleted(task.APIIDs[tasks.Todoist], task.Completed)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set completed: %w", err)
+		}
+	}
+
+	var t Task
+	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
+		return nil, fmt.Errorf("errror encoding json: %w", err)
+	}
+
+	return t.Task(), nil
+}
+
+func (c *TodoistAPI) SetTaskCompleted(id string, completed bool) error {
+	var method string
+	if completed {
+		method = "close"
+	} else {
+		method = "reopen"
+	}
+	resp, err := c.makeRequest("POST", fmt.Sprintf("/tasks/%s/%s", id, method), nil)
+	if err != nil {
+		return fmt.Errorf("failed to make request: %w", err)
+	}
+	resp.Body.Close()
+
+	if err := apis.HandleResponseStatusCode(resp.StatusCode); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *TodoistAPI) DeleteTaskByID(id string) error {
+	resp, err := c.makeRequest("DELETE", fmt.Sprintf("/tasks/%s", id), nil)
+	if err != nil {
+		return fmt.Errorf("failed to make request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := apis.HandleResponseStatusCode(resp.StatusCode); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 type Task struct {
 	ID          string `json:"id"`
 	Content     string `json:"content"`
@@ -131,132 +269,4 @@ func newTaskCU(task *tasks.Task) *taskCU {
 		}
 	}
 	return ct
-}
-
-func (c TodoistAPI) CreateTask(task *tasks.Task) (*tasks.Task, error) {
-	resp, err := c.makeRequest("POST", "/tasks", newTaskCU(task))
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if err := apis.HandleResponseStatusCode(resp.StatusCode); err != nil {
-		return nil, err
-	}
-
-	tt := &Task{}
-	err = json.NewDecoder(resp.Body).Decode(tt)
-	if err != nil {
-		return nil, fmt.Errorf("error encoding json: %w", err)
-	}
-
-	return tt.Task(), nil
-}
-
-type paginatedResponse struct {
-	Tasks       []Task `json:"results,omitempty"`
-	Next_cursor string `json:"next_cursor,omitempty"`
-}
-
-func (c *TodoistAPI) GetAllTasks() (tasks.Tasks, error) {
-	resp, err := c.makeRequest("GET", "/tasks", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if err := apis.HandleResponseStatusCode(resp.StatusCode); err != nil {
-		return nil, err
-	}
-
-	var paginatedResp paginatedResponse
-	err = json.NewDecoder(resp.Body).Decode(&paginatedResp)
-	if err != nil {
-		return nil, fmt.Errorf("error encoding json: %w", err)
-	}
-
-	// HACK:
-	tasks := make(tasks.Tasks, len(paginatedResp.Tasks))
-	for i, t := range paginatedResp.Tasks {
-		tasks[i] = *t.Task()
-	}
-
-	return tasks, nil
-}
-
-func (c *TodoistAPI) GetTaskByID(id string) (*tasks.Task, error) {
-	resp, err := c.makeRequest("GET", fmt.Sprintf("/tasks/%s", id), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if err := apis.HandleResponseStatusCode(resp.StatusCode); err != nil {
-		return nil, err
-	}
-
-	var task Task
-	err = json.NewDecoder(resp.Body).Decode(&task)
-	if err != nil {
-		return nil, fmt.Errorf("error encoding json: %w", err)
-	}
-
-	return task.Task(), nil
-}
-
-func (TodoistAPI) GetAllTasksWithDeleted() (_ tasks.Tasks, _ error) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *TodoistAPI) UpdateTask(task *tasks.Task) (*tasks.Task, error) {
-	resp, err := c.makeRequest("POST", fmt.Sprintf("/tasks/%s", task.APIIDs[tasks.Todoist]), newTaskCU(task))
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if err := apis.HandleResponseStatusCode(resp.StatusCode); err != nil {
-		return nil, err
-	}
-
-	var t Task
-	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
-		return nil, fmt.Errorf("errror encoding json: %w", err)
-	}
-
-	return t.Task(), nil
-}
-
-func (c *TodoistAPI) SetTaskCompleted(id string, completed bool) error {
-	var method string
-	if completed {
-		method = "close"
-	} else {
-		method = "reopen"
-	}
-	resp, err := c.makeRequest("POST", fmt.Sprintf("/tasks/%s/%s", id, method), nil)
-	if err != nil {
-		return fmt.Errorf("failed to make request: %w", err)
-	}
-	resp.Body.Close()
-
-	if err := apis.HandleResponseStatusCode(resp.StatusCode); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (c *TodoistAPI) DeleteTaskByID(id string) error {
-	resp, err := c.makeRequest("DELETE", fmt.Sprintf("/tasks/%s", id), nil)
-	if err != nil {
-		return fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if err := apis.HandleResponseStatusCode(resp.StatusCode); err != nil {
-		return err
-	}
-
-	return nil
 }

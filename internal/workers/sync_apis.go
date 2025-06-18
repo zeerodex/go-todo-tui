@@ -36,11 +36,13 @@ func (w *Worker) Sync() error {
 		for sourceAPI, addedIds := range added {
 			for _, addedId := range addedIds {
 				task, _ := apisTasks[sourceAPI].FindTaskByAPIID(addedId, sourceAPI)
-				for targetAPI, api := range w.apis {
-					if targetAPI != sourceAPI {
-						_, err := api.CreateTask(task)
-						if err != nil {
-							return fmt.Errorf("failed to create task in %s api: %w", targetAPI, err)
+				if !task.Completed {
+					for targetAPI, api := range w.apis {
+						if targetAPI != sourceAPI {
+							_, err := api.CreateTask(task)
+							if err != nil {
+								return fmt.Errorf("failed to create task in %s api: %w", targetAPI, err)
+							}
 						}
 					}
 				}
@@ -116,6 +118,13 @@ func (w *Worker) syncLTasks(ltasks tasks.Tasks, apiTasks tasks.Tasks) error {
 					apiTask.ID = task.ID
 					if _, err := w.repo.UpdateTask(&apiTask); err != nil {
 						return fmt.Errorf("failed to update task api id: %w", err)
+					}
+					for apiName, api := range w.apis {
+						if apiName != apiTask.Source {
+							if _, err := api.UpdateTask(&apiTask); err != nil {
+								return fmt.Errorf("failed to update task: %w", err)
+							}
+						}
 					}
 				case -1:
 					for _, api := range w.apis {
