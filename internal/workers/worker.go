@@ -110,15 +110,15 @@ func (w *Worker) processCreateTaskOp(task *tasks.Task) error {
 
 	wg.Add(len(w.apis))
 
-	for apiName, api := range w.apis {
-		go func(apiName string, api apis.API) {
+	for apiName := range w.apis {
+		go func(apiName string) {
 			defer wg.Done()
-			if err := w.createTaskInAPI(task, apiName, api); err != nil {
+			if err := w.createTaskInAPI(task, apiName); err != nil {
 				errChan <- fmt.Errorf("failed to create task in %s: %w", apiName, err)
 				return
 			}
 			errChan <- nil
-		}(apiName, api)
+		}(apiName)
 	}
 
 	wg.Wait()
@@ -137,8 +137,8 @@ func (w *Worker) processCreateTaskOp(task *tasks.Task) error {
 	return nil
 }
 
-func (w *Worker) createTaskInAPI(task *tasks.Task, apiName string, api apis.API) error {
-	apiTask, err := api.CreateTask(task)
+func (w *Worker) createTaskInAPI(task *tasks.Task, apiName string) error {
+	apiTask, err := w.apis[apiName].CreateTask(task)
 	if err != nil {
 		return fmt.Errorf("API creation failed: %w", err)
 	}
@@ -223,15 +223,15 @@ func (w *Worker) processDeleteTaskOp(taskID int) error {
 
 	wg.Add(len(w.apis))
 
-	for apiName, api := range w.apis {
-		go func(apiName string, api apis.API) {
+	for apiName := range w.apis {
+		go func(apiName string) {
 			defer wg.Done()
-			if err := w.deleteTaskFromAPI(taskID, apiName, api); err != nil {
+			if err := w.deleteTaskFromAPI(taskID, apiName); err != nil {
 				errChan <- fmt.Errorf("failed to delete task from %s: %w", apiName, err)
 				return
 			}
 			errChan <- nil
-		}(apiName, api)
+		}(apiName)
 	}
 
 	wg.Wait()
@@ -250,13 +250,13 @@ func (w *Worker) processDeleteTaskOp(taskID int) error {
 	return nil
 }
 
-func (w *Worker) deleteTaskFromAPI(taskID int, apiName string, api apis.API) error {
+func (w *Worker) deleteTaskFromAPI(taskID int, apiName string) error {
 	apiID, err := w.repo.GetTaskAPIID(taskID, apiName)
 	if err != nil {
 		return fmt.Errorf("failed to get API ID: %w", err)
 	}
 
-	return api.DeleteTaskByID(apiID)
+	return w.apis[apiName].DeleteTaskByID(apiID)
 }
 
 func (w *Worker) processSyncTasksOp() error {

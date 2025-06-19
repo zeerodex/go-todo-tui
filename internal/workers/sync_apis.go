@@ -31,46 +31,70 @@ func (w *Worker) Sync() error {
 		}
 	}
 
+	fmt.Println("SNAPSHOTS:")
+	for apiName, snapshot := range snapshots {
+		fmt.Print("\t")
+		fmt.Print(apiName + ":\n")
+		fmt.Print("\t\t")
+		fmt.Print(snapshot.IDs)
+		fmt.Print("\n")
+	}
+	fmt.Print("\n")
+	fmt.Println("APIs:")
+	for apiName, tasks := range apisTasks {
+		fmt.Print("\t")
+		fmt.Print(apiName + ":\n")
+		fmt.Print("\t\t")
+		fmt.Print(tasks)
+		fmt.Print("\n")
+	}
+
 	if !apisTasksEqual(apisTasks) {
 		deleted, added := getDiff(apisTasks, snapshots)
+		fmt.Println("DELETED AND ADDED:")
+		fmt.Println("DELETED")
+		fmt.Println(deleted)
+		fmt.Println("ADDED")
+		fmt.Println(added)
+
 		for sourceAPI, addedIds := range added {
 			for _, addedId := range addedIds {
 				task, _ := apisTasks[sourceAPI].FindTaskByAPIID(addedId, sourceAPI)
-				if !task.Completed {
-					for targetAPI, api := range w.apis {
-						if targetAPI != sourceAPI {
-							_, err := api.CreateTask(task)
-							if err != nil {
-								return fmt.Errorf("failed to create task in %s api: %w", targetAPI, err)
-							}
+				for targetAPI, api := range w.apis {
+					if targetAPI != sourceAPI {
+						apiTask, err := api.CreateTask(task)
+						if err != nil {
+							return fmt.Errorf("failed to create task in %s api: %w", targetAPI, err)
 						}
+						task.APIIDs[targetAPI] = apiTask.APIIDs[targetAPI]
 					}
+				}
+				if _, err := w.repo.CreateTask(task); err != nil {
+					return fmt.Errorf("failed to create local task: %w", err)
 				}
 			}
 		}
 		for sourceAPI, deletedIds := range deleted {
 			for _, deletedId := range deletedIds {
 				task, found := ltasks.FindTaskByAPIID(deletedId, sourceAPI)
+				fmt.Println(found)
 				if found {
-					for targetAPI, api := range w.apis {
+					for targetAPI := range w.apis {
 						if targetAPI != sourceAPI {
-							err = api.DeleteTaskByID(task.APIIDs[targetAPI])
-							if err != nil {
-								return fmt.Errorf("failed to delete task from %s api: %w", targetAPI, err)
+							if err := w.deleteTaskFromAPI(task.ID, targetAPI); err != nil {
+								return fmt.Errorf("failed to create task in %s api: %w", targetAPI, err)
 							}
 						}
 					}
-				}
-				err = w.repo.DeleteTaskByID(task.ID)
-				if err != nil {
-					return fmt.Errorf("failed to delete local task deleted in api: %w", err)
+					if err := w.repo.DeleteTaskByID(task.ID); err != nil {
+						return fmt.Errorf("failed to delete local task deleted in api: %w", err)
+					}
 				}
 			}
 		}
 	}
 
-	err = w.processCreateSnapshotsOp()
-	if err != nil {
+	if err = w.processCreateSnapshotsOp(); err != nil {
 		return fmt.Errorf("failed to create snapshots: %w", err)
 	}
 
@@ -85,8 +109,7 @@ func (w *Worker) Sync() error {
 	if slicesEqual(ltasks, apiTasks) {
 		return nil
 	} else {
-		err = w.syncLTasks(ltasks, apiTasks)
-		if err != nil {
+		if err = w.syncLTasks(ltasks, apiTasks); err != nil {
 			return fmt.Errorf("failed to replace local tasks with api tasks: %w", err)
 		}
 	}
