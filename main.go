@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/zeerodex/goot/internal/cli"
+	"github.com/zeerodex/goot/cmd"
 	"github.com/zeerodex/goot/internal/config"
 	"github.com/zeerodex/goot/internal/database"
 	"github.com/zeerodex/goot/internal/repositories"
@@ -28,5 +28,5 @@ func main() {
 	}
 	defer service.WP().Stop()
 
-	cli.Execute(service, cfg)
+	cmd.Execute(service, cfg)
 }
