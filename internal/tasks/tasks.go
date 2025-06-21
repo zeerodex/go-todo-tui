@@ -45,6 +45,14 @@ func (tasks Tasks) FindTaskByAPIID(apiId string, apiName string) (*Task, bool) {
 	return nil, false
 }
 
+func (t *Task) Update(tt *Task) *Task {
+	t.Title = tt.Title
+	t.Description = tt.Description
+	t.Due = tt.Due
+	t.Completed = tt.Completed
+	return t
+}
+
 func (t Task) Task() string {
 	if t.Description != "" {
 		return fmt.Sprintf("ID:%d\n\tAPI IDs :%v\n\tTitle: %s\n\tDescription:%s\n\tDue:%s\n\tCompleted:%t\n\tModified:%s\n\tDeleted:%t", t.ID, t.APIIDs, t.Title, t.Description, t.Due, t.Completed, t.LastModified, t.Deleted)

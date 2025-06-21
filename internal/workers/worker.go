@@ -61,21 +61,21 @@ func (w *Worker) Start(ctx context.Context, wg *sync.WaitGroup) {
 func (w *Worker) processAPIJobWithRetry(ctx context.Context, job APIJob) APIJobResult {
 	var err error
 
-	for attempt := range maxRetries {
-		if attempt > 0 {
-			delay := time.Duration(attempt) * baseDelay
-			select {
-			case <-time.After(delay):
-			case <-ctx.Done():
-				break
-			}
-		}
+	// for attempt := range maxRetries {
+	// 	if attempt > 0 {
+	// 		delay := time.Duration(attempt) * baseDelay
+	// 		select {
+	// 		case <-time.After(delay):
+	// 		case <-ctx.Done():
+	// 			break
+	// 		}
+	// 	}
 
-		err = w.processAPIJob(job)
-		if err == nil {
-			break
-		}
-	}
+	err = w.processAPIJob(job)
+	// if err == nil {
+	// 	break
+	// }
+	// }
 
 	return APIJobResult{
 		JobID:     job.ID,
